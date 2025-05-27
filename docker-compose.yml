@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  transcription:
+    build: .
+    container_name: audio-transcription
+    volumes:
+      # Mount local directory for input/output files
+      - ./data:/data
+      # Mount models directory to persist downloaded models
+      - ./models:/app/models
+      # Mount temp directory
+      - ./temp:/app/temp
+    environment:
+      # Set HuggingFace token if needed for speaker diarization
+      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN:-}
+      # Optional: Force CPU usage
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+    # Enable GPU support if available
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Command examples (uncomment one):
+    # Basic transcription
+    # command: ["/data/input.m4a", "-o", "/data/output", "--format", "txt"]
+    
+    # With speaker diarization
+    # command: ["/data/input.m4a", "-o", "/data/output", "--format", "md", "--diarize"]
+    
+    # High quality
+    # command: ["/data/input.m4a", "-o", "/data/output", "--format", "json", "--model-size", "large-v3", "--clean-audio"]
+
+  # Optional: Web interface (future enhancement)
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.web
+  #   container_name: transcription-web
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - transcription
+  #   volumes:
+  #     - ./data:/app/data
+
+# Networks
+networks:
+  default:
+    name: transcription-network
+
+# Volumes for persistent storage
+volumes:
+  models:
+    driver: local
+  temp:
+    driver: local

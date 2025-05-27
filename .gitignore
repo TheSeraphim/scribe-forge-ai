@@ -1,0 +1,103 @@
+# Audio Transcription Tool - .gitignore
+
+# Data (samples)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
+
+# Virtual Environments
+venv/
+venv-*/
+env/
+ENV/
+.venv
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Audio Files (large files)
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.aac
+*.ogg
+*.wma
+
+# Output Files
+*_transcript.*
+*_trascrizione.*
+*_output.*
+*_test.*
+primo_test.*
+agilis_*.*
+
+# Models Directory (huge files)
+models/
+*.pt
+*.pth
+
+# Temporary Files
+temp/
+tmp/
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Windows
+desktop.ini
+$RECYCLE.BIN/
+
+# Audio Processing Temp
+processed_*
+test_audio.*
+
+# HuggingFace Cache
+.cache/
+huggingface/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# PyTorch
+lightning_logs/
+
+# Backup Files
+*.backup
+*.bak
+*~
+
+# Large Downloads
+downloads/
+cache/
