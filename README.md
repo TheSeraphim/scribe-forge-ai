@@ -1,4 +1,4 @@
-![](./scribe-forge-ai.png)
+![](./scribe-forge.ai.png)
 
 
 # Audio Transcription Tool
