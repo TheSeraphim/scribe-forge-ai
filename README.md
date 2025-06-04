@@ -1,3 +1,6 @@
+![](./scribe-forge-ai.png)
+
+
 # Audio Transcription Tool
 
 Complete system for audio transcription with speaker diarization, using AI models that work entirely offline.
