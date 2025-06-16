@@ -130,7 +130,7 @@ Options:
 ### Practical Examples
 
 ```bash
-# Italian meeting with 3 participants
+# English meeting with 3 participants
 python main.py meeting.m4a -o meeting_transcript \
   --format md --diarize --language it --clean-audio
 
@@ -149,7 +149,7 @@ python main.py podcast.mp3 -o podcast_transcript \
 ```
 Audio Transcription
 Generated: 2025-05-25 14:30:00
-Language: italian
+Language: English
 Speakers detected: 2
 
 ==================================================
@@ -164,13 +164,13 @@ Speakers detected: 2
 {
   "metadata": {
     "created_at": "2025-05-25T14:30:00",
-    "language": "italian",
+    "language": "English",
     "has_speakers": true,
     "total_segments": 45
   },
   "transcription": {
     "text": "Full transcription text...",
-    "language": "italian",
+    "language": "English",
     "segments": [
       {
         "id": 0,
@@ -197,7 +197,7 @@ Speakers detected: 2
 # Audio Transcription
 
 **Generated:** 2025-05-25 14:30:00  
-**Language:** italian  
+**Language:** English  
 **Speakers:** 2
 
 ---
@@ -226,7 +226,7 @@ The system uses detailed logging with timestamps in the format `[yyyyMMdd-HHmmss
 [20250525-143005] INFO - Loaded audio: 1547.2s, 16000Hz
 [20250525-143006] INFO - Loading Whisper model: base
 [20250525-143008] INFO - Starting transcription...
-[20250525-143045] INFO - Detected language: italian
+[20250525-143045] INFO - Detected language: English
 [20250525-143046] INFO - Performing speaker diarization...
 [20250525-143078] INFO - Diarization completed: 2 speakers detected
 [20250525-143079] INFO - Saving output in md format...
