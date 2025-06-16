@@ -1,5 +1,8 @@
 ![](./scribe-forge.ai.png)
 
+## ☕ Support This Project
+
+Support my work: [coff.ee/theseraphim](https://coff.ee/theseraphim)
 
 # Audio Transcription Tool
 
