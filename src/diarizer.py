@@ -39,9 +39,9 @@ class Diarizer:
         # Load audio with librosa
         audio, sr = librosa.load(str(audio_path), sr=16000)
         
-        # Segment audio into chunks
+        # Segment audio into longer chunks for better accuracy
         self.logger.info("Segmenting audio...")
-        segments, timestamps = self._segment_audio(audio, segment_length=10.0)
+        segments, timestamps = self._segment_audio(audio, segment_length=20.0)  # Longer segments
         
         if len(segments) == 0:
             self.logger.warning("No audio segments found for diarization")
@@ -55,9 +55,12 @@ class Diarizer:
             self.logger.warning("No embeddings extracted")
             return {"segments": [], "speakers": []}
         
-        # Cluster speakers
+        # Cluster speakers with conservative settings
         self.logger.info("Clustering speakers...")
-        speaker_labels = self._cluster_speakers(embeddings)
+        speaker_labels = self._cluster_speakers(embeddings, conservative=True)
+        
+        # Post-process to merge similar speakers
+        speaker_labels = self._merge_similar_speakers(embeddings, speaker_labels)
         
         # Format result
         formatted_result = self._format_diarization_result(timestamps, speaker_labels)
@@ -67,18 +70,21 @@ class Diarizer:
         
         return formatted_result
     
-    def _segment_audio(self, audio, segment_length=10.0, sample_rate=16000):
-        """Split audio into segments for analysis"""
+    def _segment_audio(self, audio, segment_length=20.0, sample_rate=16000):
+        """Split audio into longer segments for better analysis"""
         segment_samples = int(segment_length * sample_rate)
         segments = []
         timestamps = []
         
-        for i in range(0, len(audio), segment_samples):
+        # Use overlap to improve boundary detection
+        overlap = segment_samples // 4  # 25% overlap
+        
+        for i in range(0, len(audio), segment_samples - overlap):
             end_idx = min(i + segment_samples, len(audio))
             segment = audio[i:end_idx]
             
-            # Only process segments longer than 1 second
-            if len(segment) > sample_rate:
+            # Only process segments longer than 5 seconds (increased from 1)
+            if len(segment) > 5 * sample_rate:
                 segments.append(segment)
                 start_time = i / sample_rate
                 end_time = end_idx / sample_rate
@@ -96,7 +102,8 @@ class Diarizer:
                 # Preprocess for Resemblyzer
                 processed = preprocess_wav(segment, source_sr=16000)
                 
-                if len(processed) > 4000:  # Minimum length for Resemblyzer
+                # Require longer minimum length for better quality
+                if len(processed) > 8000:  # Increased from 4000
                     embedding = encoder.embed_utterance(processed)
                     embeddings.append(embedding)
                 else:
@@ -113,25 +120,34 @@ class Diarizer:
         
         return np.array(embeddings)
     
-    def _cluster_speakers(self, embeddings, n_speakers=None):
-        """Cluster embeddings to identify speakers"""
+    def _cluster_speakers(self, embeddings, conservative=True, n_speakers=None):
+        """Cluster embeddings to identify speakers with conservative settings"""
         if len(embeddings) <= 1:
             return [0] * len(embeddings)
         
-        # Use AgglomerativeClustering
-        if n_speakers is None:
-            # Auto-detect number of speakers (max 6)
-            max_speakers = min(6, len(embeddings))
+        # Use more conservative clustering for single speaker scenarios
+        if conservative:
+            # Higher threshold = less likely to split single speaker
             clustering = AgglomerativeClustering(
                 n_clusters=None,
-                distance_threshold=0.5,
-                linkage='ward'
+                distance_threshold=0.7,  # Increased from 0.5 (more conservative)
+                linkage='average'  # Changed from 'ward' for better single speaker detection
             )
         else:
-            clustering = AgglomerativeClustering(
-                n_clusters=n_speakers,
-                linkage='ward'
-            )
+            # Use AgglomerativeClustering
+            if n_speakers is None:
+                # Auto-detect number of speakers (max 4, reduced from 6)
+                max_speakers = min(4, len(embeddings))
+                clustering = AgglomerativeClustering(
+                    n_clusters=None,
+                    distance_threshold=0.6,  # Slightly increased
+                    linkage='average'
+                )
+            else:
+                clustering = AgglomerativeClustering(
+                    n_clusters=n_speakers,
+                    linkage='average'
+                )
         
         try:
             labels = clustering.fit_predict(embeddings)
@@ -140,6 +156,54 @@ class Diarizer:
             self.logger.warning(f"Clustering failed: {e}")
             # Fallback: all segments same speaker
             return [0] * len(embeddings)
+    
+    def _merge_similar_speakers(self, embeddings, labels):
+        """Post-process to merge speakers that are too similar"""
+        if len(set(labels)) <= 1:
+            return labels
+        
+        # Calculate average embedding for each speaker
+        unique_labels = list(set(labels))
+        speaker_centroids = {}
+        
+        for label in unique_labels:
+            speaker_embeddings = embeddings[np.array(labels) == label]
+            if len(speaker_embeddings) > 0:
+                speaker_centroids[label] = np.mean(speaker_embeddings, axis=0)
+        
+        # Merge speakers that are very similar
+        similarity_threshold = 0.85  # High similarity = probably same person
+        
+        merged_labels = labels.copy()
+        label_mapping = {}
+        
+        for i, label1 in enumerate(unique_labels):
+            if label1 in label_mapping:
+                continue
+                
+            for label2 in unique_labels[i+1:]:
+                if label2 in label_mapping:
+                    continue
+                
+                # Calculate cosine similarity
+                centroid1 = speaker_centroids[label1]
+                centroid2 = speaker_centroids[label2]
+                
+                similarity = np.dot(centroid1, centroid2) / (
+                    np.linalg.norm(centroid1) * np.linalg.norm(centroid2)
+                )
+                
+                if similarity > similarity_threshold:
+                    # Merge label2 into label1
+                    label_mapping[label2] = label1
+                    self.logger.info(f"Merging similar speakers: SPEAKER_{label2:02d} -> SPEAKER_{label1:02d} (similarity: {similarity:.3f})")
+        
+        # Apply mapping
+        for i, label in enumerate(merged_labels):
+            if label in label_mapping:
+                merged_labels[i] = label_mapping[label]
+        
+        return merged_labels
     
     def _format_diarization_result(self, timestamps, speaker_labels):
         """
