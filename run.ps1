@@ -16,8 +16,23 @@
 #>
 
 param(
+    # Pass-through args to main.py (kept for compatibility/tests)
     [Parameter(ValueFromRemainingArguments=$true)]
-    [string[]]$Arguments
+    [string[]]$Arguments,
+
+    # Friendly PowerShell flags mapped to main.py CLI
+    [string]$Input,
+    [switch]$Diarize,
+    [switch]$DownloadModels,
+    [string]$ModelSize,
+    [string]$Format,
+    [string]$Language,
+    [ValidateSet('auto','cpu','cuda')]
+    [string]$Device,
+    [string]$Output,
+    [switch]$CleanAudio,
+    [switch]$AssumeYes,
+    [switch]$CreateOutputDir
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,14 +84,23 @@ if (-not $pythonCmd) {
     exit 1
 }
 
-# Run main.py with all passed arguments
-# Using & operator with explicit argument array ensures proper quoting and spacing
-if ($Arguments) {
-    & python $mainScript @Arguments
-} else {
-    # No arguments provided - pass nothing (allows --help behavior or error from argparse)
-    & python $mainScript
-}
+# Build args list: mapped flags first, then passthrough
+$argsList = @()
+if ($Input) { $argsList += $Input }
+if ($Diarize) { $argsList += "--diarize" }
+if ($DownloadModels) { $argsList += "--download-models" }
+if ($CleanAudio) { $argsList += "--clean-audio" }
+if ($AssumeYes) { $argsList += "--assume-yes" }
+if ($CreateOutputDir) { $argsList += "--create-output-dir" }
+if ($ModelSize) { $argsList += @("--model-size", $ModelSize) }
+if ($Format) { $argsList += @("--format", $Format) }
+if ($Language) { $argsList += @("--language", $Language) }
+if ($Device) { $argsList += @("--device", $Device) }
+if ($Output) { $argsList += @("-o", $Output) }
+if ($Arguments) { $argsList += $Arguments }
+
+# Run main.py using the assembled argument array
+& python $mainScript @argsList
 
 # Capture and preserve the exit code from main.py
 $exitCode = $LASTEXITCODE

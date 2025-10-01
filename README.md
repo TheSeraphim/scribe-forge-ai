@@ -69,6 +69,28 @@ Options:
   -Help                    # Show detailed help
 ```
 
+### Non-Interactive Quick Start (Windows PowerShell)
+
+All configuration uses CLI switches and environment variables — no prompts.
+
+```powershell
+# 0) Optional: allow local scripts for this session only
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+# 1) Optional tokens (only needed for pyannote diarization)
+$env:HF_TOKEN = "hf_xxx"      # or use HUGGINGFACE_HUB_TOKEN / HUGGING_FACE_HUB_TOKEN
+$env:GITHUB_TOKEN = "ghp_xxx" # optional
+
+# 2) Install (non-interactive)
+.#\install.ps1 -ForceNonAdmin -DownloadModels -DownloadDiarizationModels -HuggingFaceToken $env:HF_TOKEN
+
+# CPU-only pinned Torch (auto-detected if no NVIDIA)
+.\install.ps1 -NoGPU
+
+# 3) Run (Resemblyzer by default; no token required)
+.\run.ps1 -Input ".\audio.ogg" -Output ".\out\audio.md" -Format md -ModelSize base -Device auto -Diarize -CreateOutputDir
+```
+
 ### System Requirements
 
 **Minimum:**

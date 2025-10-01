@@ -5,7 +5,9 @@ param(
     [switch]$DownloadDiarizationModels,
     [switch]$SkipDiarization,
     [switch]$ForceNonAdmin,
-    [string]$HuggingFaceToken,
+    [string]$HuggingFaceToken = "",
+    [string]$GitHubToken = "",
+    [switch]$AssumeYes,
     [switch]$NoSmoke,
     [switch]$Help
 )
@@ -37,7 +39,9 @@ function Show-Help {
     Write-Host "-DownloadDiarizationModels        Download diarization models (pyannote)"
     Write-Host "-SkipDiarization                  Skip diarization setup"
     Write-Host "-ForceNonAdmin                    Allow running without Administrator privileges"
-    Write-Host "-HuggingFaceToken <token>         HuggingFace token for pyannote.audio"
+    Write-Host "-HuggingFaceToken <token>         Hugging Face token for pyannote.audio"
+    Write-Host "-GitHubToken <token>              GitHub token (optional; for gh auth)"
+    Write-Host "-AssumeYes                        Reserved (non-interactive; no prompts)"
     Write-Host "-NoSmoke                          Disable quick smoke tests"
     Write-Host "-Help                             Show this help"
 }
@@ -76,9 +80,10 @@ function Ensure-Venv {
 }
 
 function Install-PyTorch {
+    $torch = "torch==2.6.0"; $vision = "torchvision==0.21.0"; $audio = "torchaudio==2.6.0"
     if ($NoGPU) {
-        Write-ColorOutput "Installing PyTorch (CPU-only)" ([ConsoleColor]::Yellow)
-        & python -m pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        Write-ColorOutput "Installing PyTorch (CPU-only pinned)" ([ConsoleColor]::Yellow)
+        & python -m pip install --index-url https://download.pytorch.org/whl/cpu $torch $vision $audio
         return
     }
     $hasNvidia = $false
@@ -86,16 +91,16 @@ function Install-PyTorch {
         try { & nvidia-smi | Out-Null; $hasNvidia = $LASTEXITCODE -eq 0 } catch { $hasNvidia = $false }
     }
     if ($hasNvidia) {
-        Write-ColorOutput "NVIDIA GPU detected: installing CUDA build" ([ConsoleColor]::Green)
+        Write-ColorOutput "NVIDIA GPU detected: installing CUDA 12.4 pinned build" ([ConsoleColor]::Green)
         try {
-            & python -m pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+            & python -m pip install --index-url https://download.pytorch.org/whl/cu124 $torch $vision $audio
         } catch {
-            Write-ColorOutput "Falling back to CPU-only build" ([ConsoleColor]::Yellow)
-            & python -m pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+            Write-ColorOutput "Falling back to CPU-only pinned build" ([ConsoleColor]::Yellow)
+            & python -m pip install --index-url https://download.pytorch.org/whl/cpu $torch $vision $audio
         }
     } else {
-        Write-ColorOutput "No GPU detected: installing CPU-only build" ([ConsoleColor]::Yellow)
-        & python -m pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        Write-ColorOutput "No GPU detected: installing CPU-only pinned build" ([ConsoleColor]::Yellow)
+        & python -m pip install --index-url https://download.pytorch.org/whl/cpu $torch $vision $audio
     }
 }
 
@@ -121,21 +126,60 @@ function Install-WhisperAndModels {
 
 function Install-Diarization {
     if ($SkipDiarization) { return }
-    Write-ColorOutput "Installing pyannote.audio" ([ConsoleColor]::Yellow)
-    & python -m pip install "pyannote.audio>=3.0"
-    if ($HuggingFaceToken) { $env:HUGGING_FACE_HUB_TOKEN = $HuggingFaceToken }
-    if ($DownloadDiarizationModels -or $HuggingFaceToken) {
-        Invoke-PythonScript -Code @'
+    Write-ColorOutput "Installing Resemblyzer (default diarization backend)" ([ConsoleColor]::Yellow)
+    & python -m pip install resemblyzer scikit-learn
+
+    $py_ver = Invoke-PythonScript -Code 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")' -IgnoreExitCode
+    $can_pyannote = $false
+    $hfTok = $env:HF_TOKEN; if (-not $hfTok) { $hfTok = $env:HUGGINGFACE_HUB_TOKEN }; if (-not $hfTok) { $hfTok = $env:HUGGING_FACE_HUB_TOKEN }
+    try {
+        $maj,$min = ($py_ver -split '\.')[0..1]
+        if ([int]$maj -lt 3 -or ([int]$maj -eq 3 -and [int]$min -le 11)) { $can_pyannote = $true }
+    } catch { $can_pyannote = $false }
+
+    if ($can_pyannote -and $hfTok) {
+        Write-ColorOutput "Installing pyannote.audio (Python <= 3.11 and HF token present)" ([ConsoleColor]::Yellow)
+        & python -m pip install "pyannote.audio>=3.0"
+        if ($DownloadDiarizationModels) {
+            Invoke-PythonScript -Code @'
 import os
 try:
     from huggingface_hub import login
-    tok = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    tok = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     if tok:
         login(token=tok, add_to_git_credential=False)
 except Exception:
     pass
 '@
+            try {
+                Invoke-PythonScript -Code @'
+from pyannote.audio import Pipeline
+try:
+    Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+    print("pyannote diarization model cached")
+except Exception as e:
+    import sys
+    print(f"failed to cache diarization model: {e}")
+    sys.exit(0)
+'@
+            } catch {
+                Write-ColorOutput "Diarization model pre-download failed; will download on first use." ([ConsoleColor]::Yellow)
+            }
+        }
+    } else {
+        Write-ColorOutput "pyannote disabled (python too new or token missing). Using Resemblyzer by default." ([ConsoleColor]::Yellow)
     }
+}
+
+function Get-FirstEnv {
+    param([string[]]$names)
+    foreach ($n in $names) {
+        $v = [Environment]::GetEnvironmentVariable($n, 'Process')
+        if (-not $v) { $v = [Environment]::GetEnvironmentVariable($n, 'User') }
+        if (-not $v) { $v = [Environment]::GetEnvironmentVariable($n, 'Machine') }
+        if ($v -and $v.Trim() -ne "") { return $v }
+    }
+    return $null
 }
 
 function Run-Smoke {
@@ -145,7 +189,7 @@ function Run-Smoke {
     }
     Write-ColorOutput "Running smoke tests" ([ConsoleColor]::Yellow)
     Invoke-PythonScript -Code @'
-import importlib, sys
+import sys, importlib
 ok = True
 try:
     import torch
@@ -153,15 +197,22 @@ try:
 except Exception:
     ok = False
 try:
-    m = None
-    for name in ("whisper","faster_whisper"):
-        if importlib.util.find_spec(name):
-            m = name
-            break
-    if m is None:
-        ok = False
+    import whisper
+    whisper.load_model("tiny")
 except Exception:
     ok = False
+try:
+    ok = ok and (importlib.util.find_spec("resemblyzer") is not None)
+except Exception:
+    ok = False
+try:
+    import os
+    hf = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    allow_pyannote = (sys.version_info[:2] <= (3,11)) and bool(hf)
+    if allow_pyannote:
+        import pyannote.audio  # noqa: F401
+except Exception:
+    pass
 print("OK" if ok else "FAIL")
 sys.exit(0 if ok else 1)
 '@
@@ -178,6 +229,16 @@ function Main {
         exit 1
     }
     Ensure-Venv
+    # Configure tokens early (non-interactive)
+    $ResolvedHfToken = if ($HuggingFaceToken) { $HuggingFaceToken } else { Get-FirstEnv @("HF_TOKEN","HUGGINGFACE_HUB_TOKEN","HUGGING_FACE_HUB_TOKEN") }
+    $ResolvedGhToken = if ($GitHubToken) { $GitHubToken } else { $env:GITHUB_TOKEN }
+    if ($ResolvedHfToken) {
+        $env:HF_TOKEN = $ResolvedHfToken
+        $env:HUGGINGFACE_HUB_TOKEN = $ResolvedHfToken
+        $env:HUGGING_FACE_HUB_TOKEN = $ResolvedHfToken
+    }
+    if ($ResolvedGhToken) { $env:GITHUB_TOKEN = $ResolvedGhToken }
+
     if (-not $SkipDependencies) { Install-PyTorch }
     Install-ProjectRequirements
     Install-WhisperAndModels
