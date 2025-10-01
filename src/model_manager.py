@@ -3,19 +3,15 @@ Model management for Whisper and diarization models
 """
 
 import os
+import sys
 from pathlib import Path
-import whisper
-import torch
+from importlib.util import find_spec
 
-# Try to import pyannote, but make it optional
-try:
-    from pyannote.audio import Pipeline
-    PYANNOTE_AVAILABLE = True
-except ImportError:
-    Pipeline = None
-    PYANNOTE_AVAILABLE = False
-
-from huggingface_hub import hf_hub_download
+PY_MAJOR, PY_MINOR = sys.version_info[:2]
+PYANNOTE_ALLOWED = (PY_MAJOR, PY_MINOR) < (3, 12)
+RESEMBLYZER_AVAILABLE = find_spec("resemblyzer") is not None
+PYANNOTE_AVAILABLE = PYANNOTE_ALLOWED and (find_spec("pyannote.audio") is not None)
+# Avoid importing huggingface_hub at import time; not needed here
 
 
 class ModelManager:
@@ -26,15 +22,25 @@ class ModelManager:
         self.models_dir = Path("models")
         self.models_dir.mkdir(exist_ok=True)
         
-        # Check if CUDA is available
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Check if CUDA is available (lazy import torch)
+        try:
+            import torch as _torch  # type: ignore
+            self.device = "cuda" if _torch.cuda.is_available() else "cpu"
+        except Exception:
+            self.device = "cpu"
         self.logger.info(f"Using device: {self.device}")
         
-        # Log PyAnnote availability
+        # Log diarization backend availability (prefer Resemblyzer on Py >= 3.12)
+        diar_backends = []
         if PYANNOTE_AVAILABLE:
-            self.logger.info("PyAnnote.audio available - speaker diarization enabled")
+            diar_backends.append("pyannote.audio")
+        if RESEMBLYZER_AVAILABLE:
+            diar_backends.append("resemblyzer")
+
+        if diar_backends:
+            self.logger.info(f"Diarization available: {', '.join(diar_backends)}")
         else:
-            self.logger.info("PyAnnote.audio not available - speaker diarization disabled")
+            self.logger.info("Diarization backends not available")
     
     def download_whisper_model(self, model_size="base"):
         """
@@ -47,6 +53,7 @@ class ModelManager:
         
         try:
             # This will download the model if not present
+            import whisper  # lazy import
             model = whisper.load_model(model_size, device=self.device)
             self.logger.info(f"Whisper model '{model_size}' ready")
             return model
@@ -66,10 +73,8 @@ class ModelManager:
         try:
             # Download the pyannote diarization model
             # This requires accepting the terms on HuggingFace
-            pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                use_auth_token=None  # Set to your HF token if needed
-            )
+            from pyannote.audio import Pipeline  # import lazily
+            pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
             self.logger.info("Diarization model ready")
             return pipeline
         except Exception as e:
@@ -79,18 +84,19 @@ class ModelManager:
     
     def get_whisper_model(self, model_size="base"):
         """Get loaded Whisper model"""
+        import whisper  # lazy import
         return whisper.load_model(model_size, device=self.device)
     
     def get_diarization_pipeline(self):
         """Get loaded diarization pipeline"""
         if not PYANNOTE_AVAILABLE:
             raise ImportError("PyAnnote.audio not available. Install with: pip install pyannote.audio")
-        
+        from pyannote.audio import Pipeline  # lazy import
         return Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
     
     def is_diarization_available(self):
         """Check if diarization is available"""
-        return PYANNOTE_AVAILABLE
+        return PYANNOTE_AVAILABLE or RESEMBLYZER_AVAILABLE
     
     def list_available_models(self):
         """List available Whisper models"""

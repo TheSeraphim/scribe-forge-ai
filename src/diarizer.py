@@ -4,9 +4,13 @@ Speaker diarization using Resemblyzer (alternative to pyannote.audio)
 
 import numpy as np
 import librosa
-from resemblyzer import VoiceEncoder, preprocess_wav
 from sklearn.cluster import AgglomerativeClustering
 from pathlib import Path
+from typing import Optional
+
+# Avoid importing resemblyzer (and its transitive deps) at module import time
+_VoiceEncoder = None  # type: ignore
+_preprocess_wav = None  # type: ignore
 
 
 class Diarizer:
@@ -17,11 +21,30 @@ class Diarizer:
         self.logger = logger
         self.encoder = None
     
+    def _import_resemblyzer(self):
+        """Lazy-import resemblyzer components when needed."""
+        global _VoiceEncoder, _preprocess_wav
+        if _VoiceEncoder is None or _preprocess_wav is None:
+            try:
+                from resemblyzer import VoiceEncoder as _VE, preprocess_wav as _PW  # type: ignore
+                _VoiceEncoder, _preprocess_wav = _VE, _PW
+            except Exception as e:
+                raise ImportError(
+                    f"Resemblyzer not available: {e}. Install with 'pip install resemblyzer scikit-learn'."
+                )
+
     def _get_encoder(self):
         """Get or create Resemblyzer encoder"""
         if self.encoder is None:
+            self._import_resemblyzer()
             self.logger.info("Loading Resemblyzer voice encoder...")
-            self.encoder = VoiceEncoder()
+            # Resemblyzer prints a one-liner to stdout; silence third-party prints and log ourselves.
+            import io, sys, contextlib, time
+            t0 = time.perf_counter()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.encoder = _VoiceEncoder()
+            dt = time.perf_counter() - t0
+            self.logger.info(f"Resemblyzer voice encoder ready on {self.model_manager.device} in {dt:.2f}s")
         return self.encoder
     
     def diarize(self, audio_path):
@@ -100,7 +123,8 @@ class Diarizer:
         for i, segment in enumerate(segments):
             try:
                 # Preprocess for Resemblyzer
-                processed = preprocess_wav(segment, source_sr=16000)
+                self._import_resemblyzer()
+                processed = _preprocess_wav(segment, source_sr=16000)
                 
                 # Require longer minimum length for better quality
                 if len(processed) > 8000:  # Increased from 4000

@@ -3,9 +3,9 @@ openai-whisper>=20231117
 torch>=2.0.0
 torchaudio>=2.0.0
 
-# Speaker diarization
-pyannote.audio>=3.1.0
-pyannote.core>=5.0.0
+# Speaker diarization (base: Resemblyzer; optional pyannote in separate file)
+resemblyzer>=0.1.1
+scikit-learn>=1.1
 
 # Audio processing
 librosa>=0.10.0
@@ -21,3 +21,7 @@ numpy>=1.24.0
 pandas>=2.0.0
 pathlib
 argparse
+colorama>=0.4.6
+
+# Tooling pin to silence pkg_resources deprecation from webrtcvad (transitive of resemblyzer)
+setuptools<81

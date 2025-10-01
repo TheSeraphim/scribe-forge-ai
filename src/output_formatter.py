@@ -33,8 +33,16 @@ class OutputFormatter:
         else:
             final_result = transcription_result
         
-        # Generate output filename
-        output_file = Path(f"{output_path}.{format_type}")
+        # Determine final output path. If the provided path already has a suffix,
+        # use it as-is; otherwise append the selected format extension.
+        out = Path(output_path)
+        if out.suffix.lower() in {".json", ".txt", ".md"}:
+            output_file = out
+        else:
+            output_file = out.with_suffix(f".{format_type}")
+
+        # Ensure parent directory exists
+        output_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Save in requested format
         if format_type == "json":

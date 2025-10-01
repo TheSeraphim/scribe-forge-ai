@@ -1,0 +1,8 @@
+pyannote.audio
+pyannote.core
+pyannote.database
+pyannote.metrics
+pyannote.pipeline
+pytorch-metric-learning
+torch-audiomentations
+torchcodec
