@@ -20,7 +20,6 @@ huggingface_hub>=0.16.0
 numpy>=1.24.0
 pandas>=2.0.0
 pathlib
-argparse
 colorama>=0.4.6
 
 # Tooling pin to silence pkg_resources deprecation from webrtcvad (transitive of resemblyzer)

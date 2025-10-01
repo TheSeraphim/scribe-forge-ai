@@ -67,14 +67,32 @@ if (-not (Test-Path $mainScript)) {
 }
 
 # Activate virtual environment (suppress activation output)
-try {
-    & $venvActivate
-    if ($LASTEXITCODE -ne 0) {
-        throw "Activation script exited with code $LASTEXITCODE"
+# Check if venv is already active
+$venvAlreadyActive = $false
+if ($env:VIRTUAL_ENV) {
+    $currentVenv = [System.IO.Path]::GetFullPath($env:VIRTUAL_ENV)
+    $expectedVenv = [System.IO.Path]::GetFullPath((Join-Path $ScriptRoot ".venv"))
+    if ($currentVenv -eq $expectedVenv) {
+        $venvAlreadyActive = $true
+        Write-Host "[run] Virtual environment already active" -ForegroundColor DarkGray
+    } else {
+        Write-Host "WARNING: Different venv is active: $currentVenv" -ForegroundColor Yellow
+        Write-Host "Expected: $expectedVenv" -ForegroundColor Yellow
+        Write-Host "Please deactivate first, then run this script again." -ForegroundColor Yellow
+        exit 1
     }
-} catch {
-    Write-Host "ERROR: Failed to activate virtual environment: $_" -ForegroundColor Red
-    exit 1
+}
+
+if (-not $venvAlreadyActive) {
+    try {
+        & $venvActivate
+        if ($LASTEXITCODE -ne 0) {
+            throw "Activation script exited with code $LASTEXITCODE"
+        }
+    } catch {
+        Write-Host "ERROR: Failed to activate virtual environment: $_" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Validate Python is available in venv
@@ -84,20 +102,47 @@ if (-not $pythonCmd) {
     exit 1
 }
 
-# Build args list: mapped flags first, then passthrough
+# Build args list in required order: Input, passthrough, then mapped flags
 $argsList = @()
+
+# Positional input first if provided via -Input
 if ($Input) { $argsList += $Input }
+
+# Preserve raw pass-through next
+if ($Arguments) { $argsList += $Arguments }
+
+# Then append mapped flags
+if ($Output) { $argsList += @("-o", $Output) }
+if ($Format) { $argsList += @("--format", $Format) }
+if ($ModelSize) { $argsList += @("--model-size", $ModelSize) }
+if ($Device) { $argsList += @("--device", $Device) }
 if ($Diarize) { $argsList += "--diarize" }
 if ($DownloadModels) { $argsList += "--download-models" }
 if ($CleanAudio) { $argsList += "--clean-audio" }
 if ($AssumeYes) { $argsList += "--assume-yes" }
 if ($CreateOutputDir) { $argsList += "--create-output-dir" }
-if ($ModelSize) { $argsList += @("--model-size", $ModelSize) }
-if ($Format) { $argsList += @("--format", $Format) }
 if ($Language) { $argsList += @("--language", $Language) }
-if ($Device) { $argsList += @("--device", $Device) }
-if ($Output) { $argsList += @("-o", $Output) }
-if ($Arguments) { $argsList += $Arguments }
+
+# Fail fast if no positional input was provided
+if (-not ($argsList | Where-Object { $_ -notmatch '^-'})) {
+  Write-Host "ERROR: missing input_file"
+  exit 2
+}
+
+# Optional device availability hint (non-blocking, non-fatal)
+Write-Host "[run] hint: probing CUDA availability..." -ForegroundColor DarkGray
+try {
+    $pythonCode = @'
+try:
+    import torch
+    print('HINT torch_cuda_is_available=', bool(torch.cuda.is_available()))
+except Exception:
+    print('HINT torch_unavailable')
+'@
+    $null = & python -c $pythonCode 2>$null
+} catch {
+    # Silently ignore any errors
+}
 
 # Run main.py using the assembled argument array
 & python $mainScript @argsList

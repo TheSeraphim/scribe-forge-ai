@@ -133,12 +133,9 @@ def main():
         if args.download_models:
             logger.info("Downloading required models...")
             model_manager.download_whisper_model(args.model_size)
-            if args.diarize:
-                try:
-                    model_manager.download_diarization_model()
-                except Exception as e:
-                    logger.error(f"Failed to download diarization model: {e}")
-                    args.diarize = False
+            if args.diarize and model_manager.diarization_backend() == 'pyannote' and model_manager.pyannote_is_eligible():
+                # Best-effort cache; ModelManager handles warnings/info and does not raise
+                model_manager.download_diarization_model()
         
         # Initialize components
         audio_processor = AudioProcessor(logger)

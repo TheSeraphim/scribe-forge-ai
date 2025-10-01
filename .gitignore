@@ -124,3 +124,7 @@ models/
 
 # Environment variables
 .env
+
+# Local agent notes
+/AGENTS.md
+/CLAUDE.md

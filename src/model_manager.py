@@ -41,6 +41,23 @@ class ModelManager:
             self.logger.info(f"Diarization available: {', '.join(diar_backends)}")
         else:
             self.logger.info("Diarization backends not available")
+
+    def diarization_backend(self) -> str:
+        """Return preferred diarization backend name: 'resemblyzer', 'pyannote', or 'none'.
+        Preference is Resemblyzer by default; pyannote used only if Resemblyzer unavailable.
+        """
+        if RESEMBLYZER_AVAILABLE:
+            return "resemblyzer"
+        if PYANNOTE_AVAILABLE:
+            return "pyannote"
+        return "none"
+
+    def pyannote_is_eligible(self) -> bool:
+        """Eligibility: Python <=3.11 and HF token available in environment."""
+        if not PYANNOTE_ALLOWED:
+            return False
+        tok = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+        return bool(tok)
     
     def download_whisper_model(self, model_size="base"):
         """
@@ -62,25 +79,22 @@ class ModelManager:
             raise
     
     def download_diarization_model(self):
-        """Download speaker diarization model"""
-        if not PYANNOTE_AVAILABLE:
-            self.logger.error("PyAnnote.audio not installed. Cannot download diarization model.")
-            self.logger.error("Install with: pip install pyannote.audio")
-            raise ImportError("PyAnnote.audio not available")
-        
-        self.logger.info("Checking speaker diarization model...")
-        
+        """Best-effort pre-cache for diarization backend (pyannote only)."""
+        if self.diarization_backend() != "pyannote":
+            return None
+        if not self.pyannote_is_eligible():
+            self.logger.info("pyannote not eligible; skipping pre-download")
+            return None
+
+        self.logger.info("Checking speaker diarization model (pyannote)...")
         try:
-            # Download the pyannote diarization model
-            # This requires accepting the terms on HuggingFace
             from pyannote.audio import Pipeline  # import lazily
             pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
-            self.logger.info("Diarization model ready")
+            self.logger.info("pyannote diarization model cached")
             return pipeline
         except Exception as e:
-            self.logger.error(f"Failed to load diarization model: {e}")
-            self.logger.error("Note: You may need to accept terms at https://huggingface.co/pyannote/speaker-diarization-3.1")
-            raise
+            self.logger.warning(f"pyannote pre-download failed: {e}")
+            return None
     
     def get_whisper_model(self, model_size="base"):
         """Get loaded Whisper model"""
