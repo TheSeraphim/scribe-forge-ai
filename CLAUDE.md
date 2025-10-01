@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an audio transcription tool with speaker diarization capabilities, built around OpenAI Whisper for transcription and multiple diarization backends (Resemblyzer for Python 3.12+, pyannote.audio for Python 3.11-). The tool processes audio files and outputs transcriptions in multiple formats (JSON, TXT, Markdown) with precise timestamps and optional speaker identification.
 
+## Windows Usage
+
+Windows users should use `run.ps1` which provides automatic virtual environment activation and parameter validation:
+
+```powershell
+.\run.ps1 audio.mp3 -o output --format txt --diarize
+```
+
+This is equivalent to `python main.py [args]` but handles environment setup automatically. See `QUICK_START_WINDOWS.md` for complete usage guide.
+
 ## Development Commands
 
 ### Setup and Installation
