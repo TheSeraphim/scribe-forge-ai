@@ -21,7 +21,8 @@ param(
     [string[]]$Arguments,
 
     # Friendly PowerShell flags mapped to main.py CLI
-    [string]$Input,
+    [Alias('Input')]
+    [string]$InputFile,
     [switch]$Diarize,
     [switch]$DownloadModels,
     [string]$ModelSize,
@@ -50,7 +51,10 @@ if (-not $ScriptRoot) {
 }
 
 $venvActivate = Join-Path $ScriptRoot ".venv\Scripts\Activate.ps1"
-$mainScript = Join-Path $ScriptRoot "main.py"
+# Prefer running as a module (python -m src.main) to ensure absolute imports work
+$srcMainPath = Join-Path $ScriptRoot "src/main.py"
+$rootMainPath = Join-Path $ScriptRoot "main.py"
+$useModule = Test-Path $srcMainPath
 
 # Validate required files exist
 if (-not (Test-Path $venvActivate)) {
@@ -61,8 +65,8 @@ if (-not (Test-Path $venvActivate)) {
     exit 1
 }
 
-if (-not (Test-Path $mainScript)) {
-    Write-Host "ERROR: main.py not found at: $mainScript" -ForegroundColor Red
+if (-not $useModule -and -not (Test-Path $rootMainPath)) {
+    Write-Host "ERROR: main.py not found at: $rootMainPath" -ForegroundColor Red
     exit 1
 }
 
@@ -102,16 +106,13 @@ if (-not $pythonCmd) {
     exit 1
 }
 
-# Build args list in required order: Input, passthrough, then mapped flags
+# Build args list: passthrough + mapped flags, then positional input last
 $argsList = @()
 
-# Positional input first if provided via -Input
-if ($Input) { $argsList += $Input }
-
-# Preserve raw pass-through next
+# Preserve raw pass-through first
 if ($Arguments) { $argsList += $Arguments }
 
-# Then append mapped flags
+# Append mapped flags
 if ($Output) { $argsList += @("-o", $Output) }
 if ($Format) { $argsList += @("--format", $Format) }
 if ($ModelSize) { $argsList += @("--model-size", $ModelSize) }
@@ -123,8 +124,18 @@ if ($AssumeYes) { $argsList += "--assume-yes" }
 if ($CreateOutputDir) { $argsList += "--create-output-dir" }
 if ($Language) { $argsList += @("--language", $Language) }
 
+# Finally, ensure positional input goes last
+if ($InputFile) { $argsList += $InputFile }
+
 # Fail fast if no positional input was provided
-if (-not ($argsList | Where-Object { $_ -notmatch '^-'})) {
+$hasPositional = $false
+if ($InputFile) { $hasPositional = $true }
+elseif ($Arguments) {
+  foreach ($a in $Arguments) {
+    if ($null -ne $a -and ($a -notmatch '^-')) { $hasPositional = $true; break }
+  }
+}
+if (-not $hasPositional) {
   Write-Host "ERROR: missing input_file"
   exit 2
 }
@@ -144,8 +155,12 @@ except Exception:
     # Silently ignore any errors
 }
 
-# Run main.py using the assembled argument array
-& python $mainScript @argsList
+# Run entrypoint using the assembled argument array
+if ($useModule) {
+    & python -m src.main @argsList
+} else {
+    & python $rootMainPath @argsList
+}
 
 # Capture and preserve the exit code from main.py
 $exitCode = $LASTEXITCODE

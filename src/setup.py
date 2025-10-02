@@ -11,7 +11,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 # Read requirements
-with open("requirements.txt", "r", encoding="utf-8") as fh:
+req_path = "docs/requirements.txt" if os.path.exists("docs/requirements.txt") else "requirements.txt"
+with open(req_path, "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(

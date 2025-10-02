@@ -1,0 +1,2 @@
+# Optional diarization dependencies
+pyannote.audio==3.*

@@ -128,3 +128,24 @@ models/
 # Local agent notes
 /AGENTS.md
 /CLAUDE.md
+# venv & IDE
+
+.venv/
+.vscode/
+
+# local outputs & temps
+
+_tmp/
+out/
+models/
+
+# large cache/artifacts
+
+.cache/
+**/**pycache**/
+*.pyc
+
+# local agent memos (keep files in root but untracked)
+
+/AGENTS.md
+/CLAUDE.md

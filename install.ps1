@@ -143,8 +143,11 @@ function Install-PyTorch {
 }
 
 function Install-ProjectRequirements {
-    $req = Join-Path $ScriptRoot "requirements.txt"
-    if (Test-Path -Path $req) {
+    # Prefer docs/requirements.txt after repo reorg; fallback to root requirements.txt for compatibility
+    $reqDocs = Join-Path $ScriptRoot "docs/requirements.txt"
+    $reqRoot = Join-Path $ScriptRoot "requirements.txt"
+    $req = if (Test-Path -Path $reqDocs) { $reqDocs } elseif (Test-Path -Path $reqRoot) { $reqRoot } else { $null }
+    if ($null -ne $req) {
         Write-ColorOutput "Installing requirements.txt (PyPI; filtering legacy 'argparse' if present)" ([ConsoleColor]::Yellow)
         # Create a temp requirements file that drops 'argparse' lines if any
         $tmpReq = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "requirements.sanitized.$([Guid]::NewGuid()).txt")

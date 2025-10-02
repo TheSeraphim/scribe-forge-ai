@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  scribe-forge:
+    build:
+      context: .
+      dockerfile: docs/ops/Dockerfile
+    volumes:
+      - ./data:/data
+    environment:
+      - HUGGINGFACE_HUB_CACHE=/app/models/huggingface
+    command: ["--help"]
